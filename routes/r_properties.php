@@ -4,6 +4,10 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use objects\Properties;
 use utils\Validate;
+use services\ImageService;
+use utils\PropertyValidator;
+
+
 
 // Get all properties
 $app->get("/properties", function (Request $request, Response $response) {
@@ -27,14 +31,10 @@ $app->get("/property/{id:[0-9]+}", function (Request $request, Response $respons
 
 // Create new property
 $app->post("/property", function (Request $request, Response $response) {
-    $uploadedFiles = $request->getUploadedFiles();
     $params = $request->getParsedBody();
-    
-    // Debug: Ver qué datos estamos recibiendo
-    error_log('Datos recibidos: ' . print_r($params, true));
-    error_log('Archivos recibidos: ' . print_r($uploadedFiles, true));
+    $uploadedFiles = $request->getUploadedFiles();
 
-    // Construir el array de datos
+    // Construir datos para validación
     $data = [
         'title' => $params['title'] ?? null,
         'description' => $params['description'] ?? null,
@@ -49,62 +49,16 @@ $app->post("/property", function (Request $request, Response $response) {
         'address' => $params['address'] ?? null,
         'city' => $params['city'] ?? null,
         'province' => $params['province'] ?? null,
-        'featured' => isset($params['featured']) ? filter_var($params['featured'], FILTER_VALIDATE_BOOLEAN) : false
+        'featured' => isset($params['featured']) ? filter_var($params['featured'], FILTER_VALIDATE_BOOLEAN) : false,
+        'user_id' => isset($params['user_id']) ? intval($params['user_id']) : null
     ];
 
-    // Decodificar amenities si existe
-    if (isset($params['amenities'])) {
-        $data['amenities'] = json_decode($params['amenities'], true);
-    }
+    // Decodificar los amenities enviados como JSON
+    $data['amenities'] = isset($params['amenities']) ? json_decode($params['amenities'], true) : [];
 
-    // Procesar imágenes
-    if (!empty($uploadedFiles['images'])) {
-        $data['images'] = $uploadedFiles['images'];
-    }
-
-    // Debug: Ver datos procesados
-    error_log('Datos procesados: ' . print_r($data, true));
-
-    // Validaciones básicas
-    if (empty($data['title'])) {
-        $resp = new \stdClass();
-        $resp->ok = false;
-        $resp->msg = "El título es requerido";
-        $resp->errores = ["El título es requerido"];
-        $response->getBody()->write(json_encode($resp));
-        return $response
-            ->withHeader('Content-Type', 'application/json')
-            ->withStatus(400);
-    }
-
-    if (empty($data['type'])) {
-        $resp = new \stdClass();
-        $resp->ok = false;
-        $resp->msg = "El tipo de propiedad es requerido";
-        $resp->errores = ["El tipo de propiedad es requerido"];
-        $response->getBody()->write(json_encode($resp));
-        return $response
-            ->withHeader('Content-Type', 'application/json')
-            ->withStatus(400);
-    }
-
-    if (empty($data['status'])) {
-        $resp = new \stdClass();
-        $resp->ok = false;
-        $resp->msg = "El estado de la propiedad es requerido";
-        $resp->errores = ["El estado de la propiedad es requerido"];
-        $response->getBody()->write(json_encode($resp));
-        return $response
-            ->withHeader('Content-Type', 'application/json')
-            ->withStatus(400);
-    }
-
-    if (empty($data['price_ars']) && empty($data['price_usd'])) {
-        $resp = new \stdClass();
-        $resp->ok = false;
-        $resp->msg = "Se requiere al menos un precio (ARS o USD)";
-        $resp->errores = ["Debe especificar al menos un precio en ARS o USD"];
-        $response->getBody()->write(json_encode($resp));
+    $validator = new PropertyValidator();
+    if (!$validator->validate($data)) {
+        $response->getBody()->write(json_encode($validator->getFormattedErrors()));
         return $response
             ->withHeader('Content-Type', 'application/json')
             ->withStatus(400);
@@ -113,28 +67,100 @@ $app->post("/property", function (Request $request, Response $response) {
     try {
         $properties = new Properties($this->get('db'));
         $result = $properties->addProperty($data)->getResult();
-        
+
+        // Procesar imágenes si se subieron
+        if ($result->ok && !empty($uploadedFiles['images'])) {
+            $imageService = new ImageService();
+            $uploadedImages = [];
+            $files = $uploadedFiles['images'];
+            // Si no es un array, forzarlo a array
+            if (!is_array($files)) {
+                $files = [$files];
+            }
+            foreach ($files as $file) {
+                $uploadResult = $imageService->uploadImage($file);
+                if ($uploadResult['success']) {
+                    $uploadedImages[] = [
+                        'url' => $uploadResult['path'],
+                        'is_main' => false // Se puede ajustar según lo enviado desde el front
+                    ];
+                }
+            }
+            if (!empty($uploadedImages)) {
+                $properties->addPropertyImages($result->data['newId'], $uploadedImages);
+            }
+        }
+
         $response->getBody()->write(json_encode($result));
         return $response
-            ->withHeader('Content-Type', 'application/json')
+            ->withHeader("Content-Type", "application/json")
             ->withStatus($result->ok ? 200 : 400);
     } catch (\Exception $e) {
         $resp = new \stdClass();
         $resp->ok = false;
         $resp->msg = $e->getMessage();
         $resp->errores = [$e->getMessage()];
-        
+
         $response->getBody()->write(json_encode($resp));
         return $response
-            ->withHeader('Content-Type', 'application/json')
+            ->withHeader("Content-Type", "application/json")
             ->withStatus(500);
     }
 });
+// Las demás rutas se mantienen sin cambios, o bien se pueden revisar si se desea actualizar el manejo de amenities en la actualización.
 
-// Update property
-$app->put("/property/{id:[0-9]+}", function (Request $request, Response $response, array $args) {
+// Ruta para actualizar propiedad (usando POST para multipart/form-data)
+$app->post("/property/{id:[0-9]+}", function (Request $request, Response $response, array $args) {
+    // Obtener campos de texto
     $fields = $request->getParsedBody();
+    // Obtener archivos subidos
+    $uploadedFiles = $request->getUploadedFiles();
 
+    // Si amenities viene como JSON, decodificarlo
+    if (isset($fields['amenities'])) {
+        $fields['amenities'] = json_decode($fields['amenities'], true);
+    }
+
+    // Procesar imágenes existentes (se envían como texto en el FormData)
+    $images = [];
+    if (isset($fields['existing_images'])) {
+        $existingImages = is_array($fields['existing_images']) ? $fields['existing_images'] : [$fields['existing_images']];
+        $existingImagesMain = isset($fields['existing_images_main'])
+            ? (is_array($fields['existing_images_main']) ? $fields['existing_images_main'] : [$fields['existing_images_main']])
+            : [];
+        for ($i = 0; $i < count($existingImages); $i++) {
+            $images[] = [
+                'url' => $existingImages[$i],
+                'is_main' => (isset($existingImagesMain[$i]) && $existingImagesMain[$i] == '1') ? true : false
+            ];
+        }
+    }
+
+    // Procesar nuevas imágenes (vienen como archivos)
+    if (isset($uploadedFiles['images'])) {
+        $newFiles = is_array($uploadedFiles['images']) ? $uploadedFiles['images'] : [$uploadedFiles['images']];
+        // Las banderas para nuevas imágenes se envían como texto en el FormData (images_main[])
+        $newImagesMain = isset($fields['images_main'])
+            ? (is_array($fields['images_main']) ? $fields['images_main'] : [$fields['images_main']])
+            : [];
+        $imageService = new \services\ImageService();
+        foreach ($newFiles as $index => $file) {
+            $uploadResult = $imageService->uploadImage($file);
+            if ($uploadResult['success']) {
+                $images[] = [
+                    'url' => $uploadResult['path'],
+                    'is_main' => (isset($newImagesMain[$index]) && $newImagesMain[$index] == '1') ? true : false
+                ];
+            }
+        }
+    }
+
+    // Si se procesaron imágenes, asignarlas al campo 'images'
+    if (!empty($images)) {
+        $fields['images'] = $images;
+    }
+
+    // Validar campos obligatorios
     $verificar = [
         "title" => [
             "type" => "string",
@@ -157,13 +183,13 @@ $app->put("/property/{id:[0-9]+}", function (Request $request, Response $respons
         ]
     ];
 
-    $validacion = new Validate($this->get("db"));
+    $validacion = new \utils\Validate($this->get("db"));
     $validacion->validar($fields, $verificar);
 
     if ($validacion->hasErrors()) {
         $resp = $validacion->getErrors();
     } else {
-        $properties = new Properties($this->get("db"));
+        $properties = new \objects\Properties($this->get("db"));
         $resp = $properties->updateProperty($args["id"], $fields)->getResult();
     }
 
@@ -246,46 +272,58 @@ $app->get("/properties/city/{city}", function (Request $request, Response $respo
 
 // Upload property images
 $app->post("/property/{id:[0-9]+}/images", function (Request $request, Response $response, array $args) {
+    $imageService = new ImageService();
     $uploadedFiles = $request->getUploadedFiles();
 
     if (empty($uploadedFiles['images'])) {
         $resp = new \stdClass();
         $resp->ok = false;
         $resp->msg = "No se han subido imágenes";
-        $resp->data = null;
-
         $response->getBody()->write(json_encode($resp));
-        return $response
-            ->withHeader("Content-Type", "application/json")
-            ->withStatus(400);
+        return $response->withStatus(400);
     }
 
     $properties = new Properties($this->get("db"));
-    $imageData = [];
+    $uploadedImages = [];
 
     foreach ($uploadedFiles['images'] as $image) {
-        if ($image->getError() === UPLOAD_ERR_OK) {
-            $extension = pathinfo($image->getClientFilename(), PATHINFO_EXTENSION);
-            $basename = bin2hex(random_bytes(8));
-            $filename = sprintf('%s.%0.8s', $basename, $extension);
-
-            $image->moveTo("uploads/" . $filename);
-
-            $imageData[] = [
-                'url' => 'uploads/' . $filename,
+        $result = $imageService->uploadImage($image);
+        if ($result['success']) {
+            $uploadedImages[] = [
+                'url' => $result['path'],
                 'is_main' => false
             ];
         }
     }
 
-    if (!empty($imageData)) {
-        $resp = $properties->addPropertyImages($args['id'], $imageData)->getResult();
+    if (!empty($uploadedImages)) {
+        $data = ['images' => $uploadedImages];
+        $resp = $properties->updateProperty($args['id'], $data)->getResult();
     } else {
         $resp = new \stdClass();
         $resp->ok = false;
         $resp->msg = "Error al procesar las imágenes";
-        $resp->data = null;
     }
+
+    $response->getBody()->write(json_encode($resp));
+    return $response
+        ->withHeader("Content-Type", "application/json")
+        ->withStatus($resp->ok ? 200 : 409);
+});
+
+$app->put("/property/{id:[0-9]+}/image/{image_id:[0-9]+}/main", function (Request $request, Response $response, array $args) {
+    $properties = new Properties($this->get("db"));
+    $resp = $properties->setMainImage($args["id"], $args["image_id"])->getResult();
+
+    $response->getBody()->write(json_encode($resp));
+    return $response
+        ->withHeader("Content-Type", "application/json")
+        ->withStatus($resp->ok ? 200 : 409);
+});
+// Eliminar una imagen específica
+$app->delete("/property/{id:[0-9]+}/image/{image_id:[0-9]+}", function (Request $request, Response $response, array $args) {
+    $properties = new Properties($this->get("db"));
+    $resp = $properties->deletePropertyImage($args["id"], $args["image_id"])->getResult();
 
     $response->getBody()->write(json_encode($resp));
     return $response

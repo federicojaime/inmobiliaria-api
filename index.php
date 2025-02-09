@@ -22,9 +22,9 @@ $dotenv->load();
 $container->set("db", function() {
     $con = array(
         "host" => $_ENV["DB_HOST"] ?? "localhost",
-        "dbname" => $_ENV["DB_NAME"] ?? "real_estate_db",
-        "user" => $_ENV["DB_USER"] ?? "root",
-        "pass" => $_ENV["DB_PASS"] ?? ""
+        "dbname" => $_ENV["DB_NAME"] ?? "u565673608_karttem",
+        "user" => $_ENV["DB_USER"] ?? "u565673608_karttem",
+        "pass" => $_ENV["DB_PASS"] ?? "9c]ZUHWlT8;#"
     );
     
     try {

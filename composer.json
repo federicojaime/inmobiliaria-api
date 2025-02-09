@@ -9,6 +9,7 @@
     },
     "autoload": {
         "psr-4": {
+            "services\\": "services/",
             "objects\\": "objects",
             "utils\\": "utils"
         }
