@@ -20,12 +20,19 @@ $dotenv->load();
 
 // Configuración de la base de datos
 $container->set("db", function() {
-    $con = array(
+     /*$con = array(
         "host" => $_ENV["DB_HOST"] ?? "localhost",
         "dbname" => $_ENV["DB_NAME"] ?? "u565673608_karttem",
         "user" => $_ENV["DB_USER"] ?? "u565673608_karttem",
         "pass" => $_ENV["DB_PASS"] ?? "9c]ZUHWlT8;#"
-    );
+    );*/
+        $con = array(
+            "host" => $_ENV["DB_HOST"] ?? "localhost",
+            "dbname" => $_ENV["DB_NAME"] ?? "u565673608_karttem_local",
+            "user" => $_ENV["DB_USER"] ?? "root",
+            "pass" => $_ENV["DB_PASS"] ?? ""
+        );
+
     
     try {
         $pdo = new PDO(
@@ -65,7 +72,9 @@ $app->add(new \Tuupola\Middleware\JwtAuthentication([
         "/" . basename(dirname($_SERVER["PHP_SELF"])) . "/properties",
         "/" . basename(dirname($_SERVER["PHP_SELF"])) . "/property",
         "/" . basename(dirname($_SERVER["PHP_SELF"])) . "/properties/featured",
-        "/" . basename(dirname($_SERVER["PHP_SELF"])) . "/properties/search"
+        "/" . basename(dirname($_SERVER["PHP_SELF"])) . "/properties/search",
+        "/" . basename(dirname($_SERVER["PHP_SELF"])) . "/owner/document",
+
     ],
     "secret" => $_ENV["JWT_SECRET_KEY"],
     "algorithm" => $_ENV["JWT_ALGORITHM"],
@@ -103,7 +112,7 @@ $app->get("/", function (Request $request, Response $response, array $args) {
         "msg" => "Real Estate API v1.0",
         "timestamp" => time()
     ];
-    $response->getBody()->write(json_encode($data));
+    $response->getBody()->write(json_encode($data)); 
     return $response
         ->withHeader('Content-Type', 'application/json')
         ->withStatus(200);
@@ -112,6 +121,8 @@ $app->get("/", function (Request $request, Response $response, array $args) {
 // Incluir rutas
 require_once("routes/r_users.php");
 require_once("routes/r_properties.php");
+require_once("routes/r_owners.php");
+
 
 // Manejo de rutas no encontradas
 $app->map(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], '/{routes:.+}', function ($request, $response) {

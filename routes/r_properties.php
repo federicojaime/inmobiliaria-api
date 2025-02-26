@@ -42,15 +42,20 @@ $app->post("/property", function (Request $request, Response $response) {
         'status' => $params['status'] ?? null,
         'price_ars' => isset($params['price_ars']) && $params['price_ars'] !== '' ? floatval($params['price_ars']) : null,
         'price_usd' => isset($params['price_usd']) && $params['price_usd'] !== '' ? floatval($params['price_usd']) : null,
-        'area_size' => isset($params['area_size']) ? floatval($params['area_size']) : null,
+        'covered_area' => isset($params['covered_area']) ? floatval($params['covered_area']) : null,
+        'total_area' => isset($params['total_area']) ? floatval($params['total_area']) : null,
         'bedrooms' => isset($params['bedrooms']) ? intval($params['bedrooms']) : null,
         'bathrooms' => isset($params['bathrooms']) ? intval($params['bathrooms']) : null,
         'garage' => isset($params['garage']) ? filter_var($params['garage'], FILTER_VALIDATE_BOOLEAN) : false,
+        'has_electricity' => isset($params['has_electricity']) ? filter_var($params['has_electricity'], FILTER_VALIDATE_BOOLEAN) : false,
+        'has_natural_gas' => isset($params['has_natural_gas']) ? filter_var($params['has_natural_gas'], FILTER_VALIDATE_BOOLEAN) : false,
+        'has_sewage' => isset($params['has_sewage']) ? filter_var($params['has_sewage'], FILTER_VALIDATE_BOOLEAN) : false,
+        'has_paved_street' => isset($params['has_paved_street']) ? filter_var($params['has_paved_street'], FILTER_VALIDATE_BOOLEAN) : false,
         'address' => $params['address'] ?? null,
         'city' => $params['city'] ?? null,
         'province' => $params['province'] ?? null,
         'featured' => isset($params['featured']) ? filter_var($params['featured'], FILTER_VALIDATE_BOOLEAN) : false,
-        'user_id' => isset($params['user_id']) ? intval($params['user_id']) : null
+        'owner_id' => isset($params['owner_id']) ? intval($params['owner_id']) : null
     ];
 
     // Decodificar los amenities enviados como JSON
@@ -82,7 +87,7 @@ $app->post("/property", function (Request $request, Response $response) {
                 if ($uploadResult['success']) {
                     $uploadedImages[] = [
                         'url' => $uploadResult['path'],
-                        'is_main' => false // Se puede ajustar según lo enviado desde el front
+                        'is_main' => false
                     ];
                 }
             }
@@ -121,6 +126,22 @@ $app->post("/property/{id:[0-9]+}", function (Request $request, Response $respon
         $fields['amenities'] = json_decode($fields['amenities'], true);
     }
 
+    // Procesar campos numéricos
+    $fields['covered_area'] = isset($fields['covered_area']) ? floatval($fields['covered_area']) : null;
+    $fields['total_area'] = isset($fields['total_area']) ? floatval($fields['total_area']) : null;
+    $fields['price_ars'] = isset($fields['price_ars']) ? floatval($fields['price_ars']) : null;
+    $fields['price_usd'] = isset($fields['price_usd']) ? floatval($fields['price_usd']) : null;
+    $fields['bedrooms'] = isset($fields['bedrooms']) ? intval($fields['bedrooms']) : null;
+    $fields['bathrooms'] = isset($fields['bathrooms']) ? intval($fields['bathrooms']) : null;
+
+    // Procesar campos booleanos - Verificación estricta
+    $fields['garage'] = isset($fields['garage']) && $fields['garage'] == 1;
+    $fields['has_electricity'] = isset($fields['has_electricity']) && $fields['has_electricity'] == 1;
+    $fields['has_natural_gas'] = isset($fields['has_natural_gas']) && $fields['has_natural_gas'] == 1;
+    $fields['has_sewage'] = isset($fields['has_sewage']) && $fields['has_sewage'] == 1;
+    $fields['has_paved_street'] = isset($fields['has_paved_street']) && $fields['has_paved_street'] == 1;
+    $fields['featured'] = isset($fields['featured']) && $fields['featured'] == 1;
+
     // Procesar imágenes existentes (se envían como texto en el FormData)
     $images = [];
     if (isset($fields['existing_images'])) {
@@ -136,10 +157,9 @@ $app->post("/property/{id:[0-9]+}", function (Request $request, Response $respon
         }
     }
 
-    // Procesar nuevas imágenes (vienen como archivos)
+    // Procesar nuevas imágenes
     if (isset($uploadedFiles['images'])) {
         $newFiles = is_array($uploadedFiles['images']) ? $uploadedFiles['images'] : [$uploadedFiles['images']];
-        // Las banderas para nuevas imágenes se envían como texto en el FormData (images_main[])
         $newImagesMain = isset($fields['images_main'])
             ? (is_array($fields['images_main']) ? $fields['images_main'] : [$fields['images_main']])
             : [];
@@ -177,7 +197,11 @@ $app->post("/property/{id:[0-9]+}", function (Request $request, Response $respon
         "status" => [
             "type" => "string"
         ],
-        "area_size" => [
+        "covered_area" => [
+            "type" => "number",
+            "min" => 0
+        ],
+        "total_area" => [
             "type" => "number",
             "min" => 0
         ]
