@@ -79,7 +79,16 @@
 		}
 
 		public function updateUser($values) {
-			$query = "INSERT INTO $this->table_name SET email = :email, firstname = :firstname, lastname = :lastname, password = :password WHERE id = :id";
+			// Verificar si hay cambio de contraseña
+			if (isset($values["password"]) && !empty($values["password"])) {
+				$query = "UPDATE $this->table_name SET email = :email, firstname = :firstname, lastname = :lastname, password = :password WHERE id = :id";
+				$values["password"] = password_hash($values["password"], PASSWORD_BCRYPT);
+			} else {
+				// Si no hay cambio de contraseña, no la actualizamos
+				$query = "UPDATE $this->table_name SET email = :email, firstname = :firstname, lastname = :lastname WHERE id = :id";
+				unset($values["password"]);
+			}
+			
 			parent::update($query, $values);
 			return $this;
 		}
@@ -134,7 +143,7 @@
 				}
 			} else {
 				$resp->ok = false;
-				$resp->msg = "La dirección de correo eletrónico " . $values["email"] . " no esta registrado en el sistema.";
+				$resp->msg = "La dirección de correo eletrónico " . $values["email"] . " no está registrada en el sistema.";
 				$resp->data = "";
 				$resp->errores = [];
 			}

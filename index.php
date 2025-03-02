@@ -1,4 +1,5 @@
 <?php
+
 use DI\Container;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -19,32 +20,25 @@ $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
 // Configuración de la base de datos
-$container->set("db", function() {
-     /*$con = array(
+$container->set("db", function () {
+    $con = array(
         "host" => $_ENV["DB_HOST"] ?? "localhost",
-        "dbname" => $_ENV["DB_NAME"] ?? "u565673608_karttem",
-        "user" => $_ENV["DB_USER"] ?? "u565673608_karttem",
-        "pass" => $_ENV["DB_PASS"] ?? "9c]ZUHWlT8;#"
-    );*/
-        $con = array(
-            "host" => $_ENV["DB_HOST"] ?? "localhost",
-            "dbname" => $_ENV["DB_NAME"] ?? "u565673608_karttem_local",
-            "user" => $_ENV["DB_USER"] ?? "root",
-            "pass" => $_ENV["DB_PASS"] ?? ""
-        );
+        "dbname" => $_ENV["DB_NAME"] ?? "u565673608_karttem_local",
+        "user" => $_ENV["DB_USER"] ?? "root",
+        "pass" => $_ENV["DB_PASS"] ?? ""
+    );
 
-    
     try {
         $pdo = new PDO(
-            "mysql:host=" . $con["host"] . ";dbname=" . $con["dbname"], 
-            $con["user"], 
-            $con["pass"], 
+            "mysql:host=" . $con["host"] . ";dbname=" . $con["dbname"],
+            $con["user"],
+            $con["pass"],
             array(PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8")
         );
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_OBJ);
         return $pdo;
-    } catch(PDOException $e) {
+    } catch (PDOException $e) {
         echo "Connection failed: " . $e->getMessage();
         exit;
     }
@@ -74,12 +68,13 @@ $app->add(new \Tuupola\Middleware\JwtAuthentication([
         "/" . basename(dirname($_SERVER["PHP_SELF"])) . "/properties/featured",
         "/" . basename(dirname($_SERVER["PHP_SELF"])) . "/properties/search",
         "/" . basename(dirname($_SERVER["PHP_SELF"])) . "/owner/document",
-
     ],
     "secret" => $_ENV["JWT_SECRET_KEY"],
     "algorithm" => $_ENV["JWT_ALGORITHM"],
     "attribute" => "jwt",
-    "error" => function($response, $arguments) {
+    "regexp" => "/Bearer\s+(.*)$/i",  // Asegúrate de que esta expresión regular está presente
+    "header" => "Authorization",
+    "error" => function ($response, $arguments) {
         $data["ok"] = false;
         $data["msg"] = $arguments["message"];
         $response->getBody()->write(
@@ -105,24 +100,8 @@ $app->add(function ($request, $handler) {
         ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
 });
 
-// Ruta principal
-$app->get("/", function (Request $request, Response $response, array $args) {
-    $data = [
-        "ok" => true,
-        "msg" => "Real Estate API v1.0",
-        "timestamp" => time()
-    ];
-    $response->getBody()->write(json_encode($data)); 
-    return $response
-        ->withHeader('Content-Type', 'application/json')
-        ->withStatus(200);
-});
-
-// Incluir rutas
-require_once("routes/r_users.php");
-require_once("routes/r_properties.php");
-require_once("routes/r_owners.php");
-
+// Incluir todas las rutas
+require_once("routes.php");
 
 // Manejo de rutas no encontradas
 $app->map(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], '/{routes:.+}', function ($request, $response) {

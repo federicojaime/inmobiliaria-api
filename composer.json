@@ -11,7 +11,10 @@
         "psr-4": {
             "services\\": "services/",
             "objects\\": "objects",
-            "utils\\": "utils"
+            "utils\\": "utils",
+            "controllers\\": "controllers",
+            "exceptions\\": "exceptions",
+            "middleware\\": "middleware"
         }
     }
 }
