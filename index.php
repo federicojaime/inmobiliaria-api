@@ -27,6 +27,14 @@ $container->set("db", function () {
         "user" => $_ENV["DB_USER"] ?? "root",
         "pass" => $_ENV["DB_PASS"] ?? ""
     );
+    /*
+     $con = array(
+        "host" => $_ENV["DB_HOST"] ?? "localhost",
+        "dbname" => $_ENV["DB_NAME"] ?? "u565673608_karttem",
+        "user" => $_ENV["DB_USER"] ?? "root",
+        "pass" => $_ENV["DB_PASS"] ?? "&G!FMF;6w"
+    );
+    */
 
     try {
         $pdo = new PDO(

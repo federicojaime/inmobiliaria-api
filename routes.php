@@ -135,11 +135,76 @@ $app->get("/properties/featured", function (Request $request, Response $response
     $controller = new PropertyController($this);
     return $controller->getFeaturedProperties($request, $response);
 });
+// Obtener propiedades por estado (alquiladas, en venta, etc)
+
+$app->get("/properties/status/{status}", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyController($this);
+    $params = $request->getQueryParams(); // Obtener otros parámetros de consulta
+    $params['status'] = $args['status']; // Añadir el estado desde la URL
+    return $controller->getPropertiesByStatus($request, $response, $args);
+});
+
+// Búsqueda de propietarios por texto
+$app->get("/owners/search", function (Request $request, Response $response) {
+    $controller = new OwnerController($this);
+    return $controller->searchOwners($request, $response);
+});
+
+$app->get("/properties/available", function (Request $request, Response $response) {
+    $controller = new PropertyController($this);
+    return $controller->getAvailableProperties($request, $response);
+});
 
 // Subir imágenes para una propiedad
 $app->post("/property/{id:[0-9]+}/images", function (Request $request, Response $response, array $args) {
     $controller = new PropertyController($this);
     return $controller->uploadPropertyImages($request, $response, $args);
+});
+
+// Rutas para manejar cambios de estado de propiedades
+
+// Ruta para marcar como alquilado/vendido/disponible
+$app->patch("/properties/{id}/status", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyController($this);
+    return $controller->changePropertyStatus($request, $response, $args);
+});
+
+// Actualizar estado de una propiedad
+$app->patch("/property/{id:[0-9]+}/status", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyController($this);
+    return $controller->updatePropertyStatus($request, $response, $args);
+});
+
+// Ruta para cambiar disponibilidad
+$app->patch("/properties/{id}/availability", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyController($this);
+    return $controller->changeAvailabilityStatus($request, $response, $args);
+});
+
+// Ruta para obtener propiedades no disponibles (alquiladas/vendidas)
+$app->get("/properties/unavailable", function (Request $request, Response $response) {
+    $controller = new PropertyController($this);
+    return $controller->getUnavailableProperties($request, $response);
+});
+
+// Ruta para obtener propiedades alquiladas
+$app->get("/properties/rented", function (Request $request, Response $response) {
+    $controller = new PropertyController($this);
+    $request = $request->withQueryParams(array_merge(
+        $request->getQueryParams(),
+        ['status' => 'alquilado', 'is_available' => 0]
+    ));
+    return $controller->getProperties($request, $response);
+});
+
+// Ruta para obtener propiedades vendidas
+$app->get("/properties/sold", function (Request $request, Response $response) {
+    $controller = new PropertyController($this);
+    $request = $request->withQueryParams(array_merge(
+        $request->getQueryParams(),
+        ['status' => 'vendido', 'is_available' => 0]
+    ));
+    return $controller->getProperties($request, $response);
 });
 
 // Establecer una imagen como principal

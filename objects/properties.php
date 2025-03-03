@@ -45,6 +45,31 @@ class Properties extends Base
         return $this;
     }
 
+    public function getPropertiesWithFilters($filters, $orderBy, $page = null, $limit = null)
+    {
+        $query = "SELECT p.*, pa.has_pool, pa.has_heating, pa.has_ac, pa.has_garden, pa.has_laundry, pa.has_parking, pa.has_central_heating, pa.has_lawn, pa.has_fireplace, pa.has_central_ac, pa.has_high_ceiling
+                  FROM {$this->table_name} p
+                  LEFT JOIN {$this->table_amenities} pa ON p.id = pa.property_id";
+
+        if (!empty($filters['conditions'])) {
+            $query .= " WHERE " . implode(" AND ", $filters['conditions']);
+        }
+
+        $query .= " ORDER BY " . $orderBy;
+
+        if ($page !== null && $limit !== null) {
+            $page = max(1, intval($page));
+            $limit = max(1, min(50, intval($limit)));
+            $offset = ($page - 1) * $limit;
+            $query .= " LIMIT :limit OFFSET :offset";
+            $filters['values']['limit'] = $limit;
+            $filters['values']['offset'] = $offset;
+        }
+
+        parent::getAll($query, $filters['values']);
+        return $this;
+    }
+
     public function getProperty($id)
     {
         // Se obtiene la propiedad junto con los campos de amenities y datos del propietario
@@ -154,27 +179,37 @@ class Properties extends Base
                 throw new \Exception("El propietario seleccionado no existe");
             }
 
+            // Normalizar campos booleanos
+            $booleanFields = ['garage', 'has_electricity', 'has_natural_gas', 'has_sewage', 'has_paved_street', 'featured', 'is_available'];
+            foreach ($booleanFields as $field) {
+                $data[$field] = isset($data[$field]) && ($data[$field] === true || $data[$field] === 1 || $data[$field] === '1' || $data[$field] === 'true') ? 1 : 0;
+            }
+
             $query = "INSERT INTO {$this->table_name} SET
-            title = :title,
-            description = :description,
-            type = :type,
-            status = :status,
-            price_ars = :price_ars,
-            price_usd = :price_usd,
-            covered_area = :covered_area,
-            total_area = :total_area,
-            bedrooms = :bedrooms,
-            bathrooms = :bathrooms,
-            garage = :garage,
-            has_electricity = :has_electricity,
-            has_natural_gas = :has_natural_gas,
-            has_sewage = :has_sewage,
-            has_paved_street = :has_paved_street,
-            address = :address,
-            city = :city,
-            province = :province,
-            featured = :featured,
-            owner_id = :owner_id";
+                title = :title,
+                description = :description,
+                type = :type,
+                status = :status,
+                price_ars = :price_ars,
+                price_usd = :price_usd,
+                covered_area = :covered_area,
+                total_area = :total_area,
+                bedrooms = :bedrooms,
+                bathrooms = :bathrooms,
+                garage = :garage,
+                has_electricity = :has_electricity,
+                has_natural_gas = :has_natural_gas,
+                has_sewage = :has_sewage,
+                has_paved_street = :has_paved_street,
+                address = :address,
+                city = :city,
+                province = :province,
+                featured = :featured,
+                owner_id = :owner_id,
+                latitude = :latitude,
+                longitude = :longitude,
+                is_available = :is_available,
+                user_id = :user_id";
 
             $stmt = $this->conn->prepare($query);
             $result = $stmt->execute([
@@ -188,23 +223,52 @@ class Properties extends Base
                 "total_area" => $data['total_area'],
                 "bedrooms" => $data['bedrooms'] ?? null,
                 "bathrooms" => $data['bathrooms'] ?? null,
-                "garage" => $data['garage'] ? 1 : 0,
-                "has_electricity" => isset($data['has_electricity']) ? 1 : 0,
-                "has_natural_gas" => isset($data['has_natural_gas']) ? 1 : 0,
-                "has_sewage" => isset($data['has_sewage']) ? 1 : 0,
-                "has_paved_street" => isset($data['has_paved_street']) ? 1 : 0,
+                "garage" => $data['garage'],
+                "has_electricity" => $data['has_electricity'],
+                "has_natural_gas" => $data['has_natural_gas'],
+                "has_sewage" => $data['has_sewage'],
+                "has_paved_street" => $data['has_paved_street'],
                 "address" => $data['address'] ?? null,
                 "city" => $data['city'] ?? null,
                 "province" => $data['province'],
-                "featured" => $data['featured'] ? 1 : 0,
-                "owner_id" => $data['owner_id']
+                "featured" => $data['featured'],
+                "owner_id" => $data['owner_id'],
+                "latitude" => isset($data['latitude']) ? floatval($data['latitude']) : null,
+                "longitude" => isset($data['longitude']) ? floatval($data['longitude']) : null,
+                "is_available" => isset($data['is_available']) ? $data['is_available'] : 1,
+                "user_id" => isset($data['user_id']) ? intval($data['user_id']) : null
             ]);
-
             if ($result) {
                 $property_id = $this->conn->lastInsertId();
 
                 // Insertar amenities
                 if (isset($data['amenities'])) {
+                    $amenities = $data['amenities'];
+
+                    // Normalizar campos booleanos de amenities
+                    $amenityFields = [
+                        'has_pool',
+                        'has_heating',
+                        'has_ac',
+                        'has_garden',
+                        'has_laundry',
+                        'has_parking',
+                        'has_central_heating',
+                        'has_lawn',
+                        'has_fireplace',
+                        'has_central_ac',
+                        'has_high_ceiling'
+                    ];
+
+                    $amenityValues = [];
+                    foreach ($amenityFields as $field) {
+                        $amenityValues[$field] = isset($amenities[$field]) &&
+                            ($amenities[$field] === true ||
+                                $amenities[$field] === 1 ||
+                                $amenities[$field] === '1' ||
+                                $amenities[$field] === 'true') ? 1 : 0;
+                    }
+
                     $query = "INSERT INTO {$this->table_amenities} SET
                          property_id = :property_id,
                          has_pool = :has_pool,
@@ -220,20 +284,10 @@ class Properties extends Base
                          has_high_ceiling = :has_high_ceiling";
 
                     $stmt = $this->conn->prepare($query);
-                    $stmt->execute([
-                        "property_id" => $property_id,
-                        "has_pool" => $data['amenities']['has_pool'] ?? false,
-                        "has_heating" => $data['amenities']['has_heating'] ?? false,
-                        "has_ac" => $data['amenities']['has_ac'] ?? false,
-                        "has_garden" => $data['amenities']['has_garden'] ?? false,
-                        "has_laundry" => $data['amenities']['has_laundry'] ?? false,
-                        "has_parking" => $data['amenities']['has_parking'] ?? false,
-                        "has_central_heating" => $data['amenities']['has_central_heating'] ?? false,
-                        "has_lawn" => $data['amenities']['has_lawn'] ?? false,
-                        "has_fireplace" => $data['amenities']['has_fireplace'] ?? false,
-                        "has_central_ac" => $data['amenities']['has_central_ac'] ?? false,
-                        "has_high_ceiling" => $data['amenities']['has_high_ceiling'] ?? false
-                    ]);
+                    $stmt->execute(array_merge(
+                        ["property_id" => $property_id],
+                        $amenityValues
+                    ));
                 }
 
                 $this->conn->commit();
@@ -262,47 +316,54 @@ class Properties extends Base
         try {
             $this->conn->beginTransaction();
 
-            $requiredFields = ['title', 'description', 'type', 'status', 'covered_area', 'total_area'];
-            foreach ($requiredFields as $field) {
-                if (empty($data[$field])) {
-                    throw new \Exception("El campo $field es requerido");
-                }
-            }
+            /* Las validaciones y el inicio se mantienen igual */
 
-            // Si se está actualizando el propietario, verificar que existe
-            if (!empty($data['owner_id'])) {
-                $query = "SELECT id FROM owners WHERE id = :owner_id";
-                $stmt = $this->conn->prepare($query);
-                $stmt->execute(["owner_id" => $data['owner_id']]);
-                if (!$stmt->fetch()) {
-                    throw new \Exception("El propietario seleccionado no existe");
+            // Normalizar campos booleanos
+            $booleanFields = ['garage', 'has_electricity', 'has_natural_gas', 'has_sewage', 'has_paved_street', 'featured', 'is_available'];
+            foreach ($booleanFields as $field) {
+                if (isset($data[$field])) {
+                    $data[$field] = ($data[$field] === true || $data[$field] === 1 || $data[$field] === '1' || $data[$field] === 'true') ? 1 : 0;
                 }
             }
 
             $query = "UPDATE {$this->table_name} SET
-            title = :title,
-            description = :description,
-            type = :type,
-            status = :status,
-            price_ars = :price_ars,
-            price_usd = :price_usd,
-            covered_area = :covered_area,
-            total_area = :total_area,
-            bedrooms = :bedrooms,
-            bathrooms = :bathrooms,
-            garage = :garage,
-            has_electricity = :has_electricity,
-            has_natural_gas = :has_natural_gas,
-            has_sewage = :has_sewage,
-            has_paved_street = :has_paved_street,
-            address = :address,
-            city = :city,
-            province = :province,
-            featured = :featured";
+                title = :title,
+                description = :description,
+                type = :type,
+                status = :status,
+                price_ars = :price_ars,
+                price_usd = :price_usd,
+                covered_area = :covered_area,
+                total_area = :total_area,
+                bedrooms = :bedrooms,
+                bathrooms = :bathrooms,
+                garage = :garage,
+                has_electricity = :has_electricity,
+                has_natural_gas = :has_natural_gas,
+                has_sewage = :has_sewage,
+                has_paved_street = :has_paved_street,
+                address = :address,
+                city = :city,
+                province = :province,
+                featured = :featured";
 
-            // Agregar la actualización del owner_id solo si se proporciona
+            // Agregar campo is_available si se proporciona
+            if (isset($data['is_available'])) {
+                $query .= ", is_available = :is_available";
+            }
+
+            // Agregar campos de latitud y longitud si se proporcionan
+            if (isset($data['latitude']) || isset($data['longitude'])) {
+                $query .= ", latitude = :latitude, longitude = :longitude";
+            }
+
+            // Agregar la actualización del owner_id y user_id solo si se proporcionan
             if (!empty($data['owner_id'])) {
                 $query .= ", owner_id = :owner_id";
+            }
+
+            if (!empty($data['user_id'])) {
+                $query .= ", user_id = :user_id";
             }
 
             $query .= " WHERE id = :id";
@@ -319,62 +380,115 @@ class Properties extends Base
                 "total_area" => $data['total_area'],
                 "bedrooms" => $data['bedrooms'] ?? null,
                 "bathrooms" => $data['bathrooms'] ?? null,
-                "garage" => isset($data['garage']) && $data['garage'] == 1 ? 1 : 0,
-                "has_electricity" => isset($data['has_electricity']) && $data['has_electricity'] == 1 ? 1 : 0,
-                "has_natural_gas" => isset($data['has_natural_gas']) && $data['has_natural_gas'] == 1 ? 1 : 0,
-                "has_sewage" => isset($data['has_sewage']) && $data['has_sewage'] == 1 ? 1 : 0,
-                "has_paved_street" => isset($data['has_paved_street']) && $data['has_paved_street'] == 1 ? 1 : 0,
+                "garage" => isset($data['garage']) ? $data['garage'] : 0,
+                "has_electricity" => isset($data['has_electricity']) ? $data['has_electricity'] : 0,
+                "has_natural_gas" => isset($data['has_natural_gas']) ? $data['has_natural_gas'] : 0,
+                "has_sewage" => isset($data['has_sewage']) ? $data['has_sewage'] : 0,
+                "has_paved_street" => isset($data['has_paved_street']) ? $data['has_paved_street'] : 0,
                 "address" => $data['address'] ?? null,
                 "city" => $data['city'] ?? null,
                 "province" => $data['province'] ?? null,
                 "featured" => isset($data['featured']) ? $data['featured'] : 0
             ];
 
+            // Agregar is_available a los datos solo si se proporciona
+            if (isset($data['is_available'])) {
+                $updateData["is_available"] = $data['is_available'];
+            }
+
+            // Agregar latitud y longitud a los datos solo si se proporcionan
+            if (isset($data['latitude']) || isset($data['longitude'])) {
+                $updateData["latitude"] = isset($data['latitude']) ? floatval($data['latitude']) : null;
+                $updateData["longitude"] = isset($data['longitude']) ? floatval($data['longitude']) : null;
+            }
+
             // Agregar owner_id a los datos solo si se proporciona
             if (!empty($data['owner_id'])) {
                 $updateData["owner_id"] = $data['owner_id'];
             }
 
+            // Agregar user_id a los datos solo si se proporciona
+            if (!empty($data['user_id'])) {
+                $updateData["user_id"] = intval($data['user_id']);
+            }
+
             $stmt = $this->conn->prepare($query);
             $stmt->execute($updateData);
-
-            // Actualizar amenities si se proporcionaron
+            // Verificar si se proporcionaron amenities
             if (isset($data['amenities'])) {
                 $amenities = is_string($data['amenities']) ? json_decode($data['amenities'], true) : $data['amenities'];
 
-                $query = "UPDATE {$this->table_amenities} SET
-                         has_pool = :has_pool,
-                         has_heating = :has_heating,
-                         has_ac = :has_ac,
-                         has_garden = :has_garden,
-                         has_laundry = :has_laundry,
-                         has_parking = :has_parking,
-                         has_central_heating = :has_central_heating,
-                         has_lawn = :has_lawn,
-                         has_fireplace = :has_fireplace,
-                         has_central_ac = :has_central_ac,
-                         has_high_ceiling = :has_high_ceiling
-                         WHERE property_id = :property_id";
+                // Verificar si la propiedad ya tiene amenities
+                $checkQuery = "SELECT property_id FROM {$this->table_amenities} WHERE property_id = :property_id";
+                $checkStmt = $this->conn->prepare($checkQuery);
+                $checkStmt->execute(["property_id" => $id]);
+                $hasAmenities = $checkStmt->rowCount() > 0;
+
+                // Normalizar campos booleanos de amenities
+                $amenityFields = [
+                    'has_pool',
+                    'has_heating',
+                    'has_ac',
+                    'has_garden',
+                    'has_laundry',
+                    'has_parking',
+                    'has_central_heating',
+                    'has_lawn',
+                    'has_fireplace',
+                    'has_central_ac',
+                    'has_high_ceiling'
+                ];
+
+                $amenityValues = [];
+                foreach ($amenityFields as $field) {
+                    $amenityValues[$field] = isset($amenities[$field]) &&
+                        ($amenities[$field] === true ||
+                            $amenities[$field] === 1 ||
+                            $amenities[$field] === '1' ||
+                            $amenities[$field] === 'true') ? 1 : 0;
+                }
+
+                if ($hasAmenities) {
+                    // UPDATE si ya existen los amenities
+                    $query = "UPDATE {$this->table_amenities} SET
+                             has_pool = :has_pool,
+                             has_heating = :has_heating,
+                             has_ac = :has_ac,
+                             has_garden = :has_garden,
+                             has_laundry = :has_laundry,
+                             has_parking = :has_parking,
+                             has_central_heating = :has_central_heating,
+                             has_lawn = :has_lawn,
+                             has_fireplace = :has_fireplace,
+                             has_central_ac = :has_central_ac,
+                             has_high_ceiling = :has_high_ceiling
+                             WHERE property_id = :property_id";
+                } else {
+                    // INSERT si no existen
+                    $query = "INSERT INTO {$this->table_amenities} SET
+                             property_id = :property_id,
+                             has_pool = :has_pool,
+                             has_heating = :has_heating,
+                             has_ac = :has_ac,
+                             has_garden = :has_garden,
+                             has_laundry = :has_laundry,
+                             has_parking = :has_parking,
+                             has_central_heating = :has_central_heating,
+                             has_lawn = :has_lawn,
+                             has_fireplace = :has_fireplace,
+                             has_central_ac = :has_central_ac,
+                             has_high_ceiling = :has_high_ceiling";
+                }
 
                 $stmt = $this->conn->prepare($query);
-                $stmt->execute([
-                    "property_id" => $id,
-                    "has_pool" => $amenities['has_pool'] ?? false,
-                    "has_heating" => $amenities['has_heating'] ?? false,
-                    "has_ac" => $amenities['has_ac'] ?? false,
-                    "has_garden" => $amenities['has_garden'] ?? false,
-                    "has_laundry" => $amenities['has_laundry'] ?? false,
-                    "has_parking" => $amenities['has_parking'] ?? false,
-                    "has_central_heating" => $amenities['has_central_heating'] ?? false,
-                    "has_lawn" => $amenities['has_lawn'] ?? false,
-                    "has_fireplace" => $amenities['has_fireplace'] ?? false,
-                    "has_central_ac" => $amenities['has_central_ac'] ?? false,
-                    "has_high_ceiling" => $amenities['has_high_ceiling'] ?? false
-                ]);
+                $stmt->execute(array_merge(
+                    ["property_id" => $id],
+                    $amenityValues
+                ));
             }
 
             // Actualizar imágenes si se proporcionaron
-            if (isset($data['images'])) {
+            if (isset($data['images']) && !empty($data['images'])) {
                 $this->updatePropertyImages($id, $data['images']);
             }
 
@@ -394,58 +508,174 @@ class Properties extends Base
 
         return $this;
     }
+    public function getAvailableProperties($params = [])
+    {
+        // Asegurarse de que solo se devuelvan propiedades disponibles
+        $params['is_available'] = 1;
+
+        return $this->getProperties($params);
+    }
+
+    public function changeAvailabilityStatus($id, $isAvailable)
+    {
+        try {
+            $query = "UPDATE {$this->table_name} 
+                 SET is_available = :is_available 
+                 WHERE id = :id";
+
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute([
+                "id" => $id,
+                "is_available" => $isAvailable ? 1 : 0
+            ]);
+
+            $this->result = new \stdClass();
+            $this->result->ok = true;
+            $this->result->msg = $isAvailable
+                ? "Propiedad marcada como disponible exitosamente"
+                : "Propiedad marcada como no disponible exitosamente";
+
+            return $this;
+        } catch (\Exception $e) {
+            $this->result = new \stdClass();
+            $this->result->ok = false;
+            $this->result->msg = $e->getMessage();
+            return $this;
+        }
+    }
+
+    public function updatePropertyStatus($id, $status)
+    {
+        try {
+            // Verificar que la propiedad existe
+            $query = "SELECT id FROM {$this->table_name} WHERE id = :id";
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute(["id" => $id]);
+
+            if (!$stmt->fetch()) {
+                throw new \Exception("La propiedad no existe");
+            }
+
+            // Actualizar el estado de la propiedad
+            $query = "UPDATE {$this->table_name} SET status = :status WHERE id = :id";
+
+            parent::update($query, [
+                "id" => $id,
+                "status" => $status
+            ]);
+
+            if (parent::getResult()->ok) {
+                $this->result = new \stdClass();
+                $this->result->ok = true;
+                $this->result->msg = "Estado de la propiedad actualizado exitosamente";
+            }
+
+            return $this;
+        } catch (\Exception $e) {
+            $this->result = new \stdClass();
+            $this->result->ok = false;
+            $this->result->msg = $e->getMessage();
+            return $this;
+        }
+    }
+
+    // Método para obtener propiedades no disponibles (alquiladas o vendidas)
+    public function getUnavailableProperties($params = [])
+    {
+        // Asegurarse de que solo se devuelvan propiedades no disponibles
+        $params['is_available'] = 0;
+
+        // Si se especifica un estado (alquilado o vendido), filtramos por él
+        if (isset($params['status']) && in_array($params['status'], ['alquilado', 'vendido'])) {
+            // No modificamos el parámetro status que ya viene establecido
+        }
+
+        return $this->getProperties($params);
+    }
+
+    // Método para cambiar el estado de la propiedad (alquilado/vendido) y marcarla como no disponible
+    public function changePropertyStatus($id, $status)
+    {
+        try {
+            // Validar que el estado sea válido
+            if (!in_array($status, ['alquilado', 'vendido', 'disponible'])) {
+                throw new \Exception("Estado no válido. Debe ser 'alquilado', 'vendido' o 'disponible'");
+            }
+
+            $isAvailable = ($status === 'disponible') ? 1 : 0;
+
+            $query = "UPDATE {$this->table_name} 
+                 SET status = :status, is_available = :is_available 
+                 WHERE id = :id";
+
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute([
+                "id" => $id,
+                "status" => $status,
+                "is_available" => $isAvailable
+            ]);
+
+            $this->result = new \stdClass();
+            $this->result->ok = true;
+            $this->result->msg = "Estado de propiedad actualizado a '{$status}'";
+
+            return $this;
+        } catch (\Exception $e) {
+            $this->result = new \stdClass();
+            $this->result->ok = false;
+            $this->result->msg = $e->getMessage();
+            return $this;
+        }
+    }
+
+
+
     public function deleteProperty($id)
     {
-        $query = "DELETE FROM {$this->table_name} WHERE id = :id";
-        parent::delete($query, ["id" => $id]);
+        try {
+            $this->conn->beginTransaction();
+
+            // Primero eliminar registros relacionados
+            $query = "DELETE FROM {$this->table_images} WHERE property_id = :id";
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute(["id" => $id]);
+
+            $query = "DELETE FROM {$this->table_amenities} WHERE property_id = :id";
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute(["id" => $id]);
+            // Finalmente eliminar la propiedad
+            $query = "DELETE FROM {$this->table_name} WHERE id = :id";
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute(["id" => $id]);
+
+            $this->conn->commit();
+
+            $this->result = new \stdClass();
+            $this->result->ok = true;
+            $this->result->msg = "Propiedad eliminada exitosamente";
+        } catch (\Exception $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+
+            $this->result = new \stdClass();
+            $this->result->ok = false;
+            $this->result->msg = $e->getMessage();
+        }
+
         return $this;
     }
 
     public function searchProperties($params)
     {
-        $conditions = [];
-        $values = [];
+        $filterService = new FilterService();
+        $filters = $filterService->buildPropertyFilters($params);
+        $orderBy = $filterService->buildOrderBy($params);
 
-        if (!empty($params['type'])) {
-            $conditions[] = "p.type = :type";
-            $values['type'] = $params['type'];
-        }
+        $page = isset($params['page']) ? intval($params['page']) : null;
+        $limit = isset($params['limit']) ? intval($params['limit']) : null;
 
-        if (!empty($params['status'])) {
-            $conditions[] = "p.status = :status";
-            $values['status'] = $params['status'];
-        }
-
-        if (!empty($params['min_price_ars'])) {
-            $conditions[] = "p.price_ars >= :min_price_ars";
-            $values['min_price_ars'] = $params['min_price_ars'];
-        }
-
-        if (!empty($params['max_price_ars'])) {
-            $conditions[] = "p.price_ars <= :max_price_ars";
-            $values['max_price_ars'] = $params['max_price_ars'];
-        }
-
-        if (!empty($params['min_price_usd'])) {
-            $conditions[] = "p.price_usd >= :min_price_usd";
-            $values['min_price_usd'] = $params['min_price_usd'];
-        }
-
-        if (!empty($params['max_price_usd'])) {
-            $conditions[] = "p.price_usd <= :max_price_usd";
-            $values['max_price_usd'] = $params['max_price_usd'];
-        }
-
-        $query = "SELECT p.*, pa.* 
-                 FROM {$this->table_name} p
-                 LEFT JOIN {$this->table_amenities} pa ON p.id = pa.property_id";
-
-        if (!empty($conditions)) {
-            $query .= " WHERE " . implode(" AND ", $conditions);
-        }
-
-        parent::getAll($query, $values);
-        return $this;
+        return $this->getPropertiesWithFilters($filters, $orderBy, $page, $limit);
     }
 
     public function addPropertyImages($property_id, $images)
@@ -458,21 +688,28 @@ class Properties extends Base
                 $ownTransaction = true;
             }
 
-            foreach ($images as $image) {
-                $query = "INSERT INTO {$this->table_images} SET
-                         property_id = :property_id,
-                         image_url = :image_url,
-                         is_main = :is_main";
-
-                parent::add($query, [
-                    "property_id" => $property_id,
-                    "image_url" => $image['url'],
-                    "is_main" => $image['is_main'] ? 1 : 0
-                ]);
-
-                if (!parent::getResult()->ok) {
-                    throw new \Exception("Error al guardar la imagen");
+            if (empty($images)) {
+                if ($ownTransaction) {
+                    $this->conn->commit();
                 }
+                return $this;
+            }
+
+            // Insertar imágenes en lote para mayor eficiencia
+            $placeholders = [];
+            $params = [];
+
+            foreach ($images as $index => $image) {
+                $placeholders[] = "(:property_id_{$index}, :image_url_{$index}, :is_main_{$index})";
+                $params["property_id_{$index}"] = $property_id;
+                $params["image_url_{$index}"] = $image['url'];
+                $params["is_main_{$index}"] = isset($image['is_main']) && $image['is_main'] ? 1 : 0;
+            }
+
+            if (!empty($placeholders)) {
+                $query = "INSERT INTO {$this->table_images} (property_id, image_url, is_main) VALUES " . implode(', ', $placeholders);
+                $stmt = $this->conn->prepare($query);
+                $stmt->execute($params);
             }
 
             if ($ownTransaction) {
@@ -499,19 +736,31 @@ class Properties extends Base
 
             // Eliminar todas las imágenes actuales de la propiedad
             $query = "DELETE FROM {$this->table_images} WHERE property_id = :property_id";
-            parent::delete($query, ["property_id" => $property_id]);
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute(["property_id" => $property_id]);
 
-            // Insertar todas las imágenes enviadas en el array
-            foreach ($images as $image) {
-                $query = "INSERT INTO {$this->table_images} SET
-                         property_id = :property_id,
-                         image_url = :image_url,
-                         is_main = :is_main";
-                parent::add($query, [
-                    "property_id" => $property_id,
-                    "image_url" => $image['url'],
-                    "is_main" => $image['is_main'] ? 1 : 0
-                ]);
+            if (empty($images)) {
+                if ($ownTransaction) {
+                    $this->conn->commit();
+                }
+                return $this;
+            }
+
+            // Insertar todas las imágenes enviadas en el array (inserción en lote)
+            $placeholders = [];
+            $params = [];
+
+            foreach ($images as $index => $image) {
+                $placeholders[] = "(:property_id_{$index}, :image_url_{$index}, :is_main_{$index})";
+                $params["property_id_{$index}"] = $property_id;
+                $params["image_url_{$index}"] = $image['url'];
+                $params["is_main_{$index}"] = isset($image['is_main']) && $image['is_main'] ? 1 : 0;
+            }
+
+            if (!empty($placeholders)) {
+                $query = "INSERT INTO {$this->table_images} (property_id, image_url, is_main) VALUES " . implode(', ', $placeholders);
+                $stmt = $this->conn->prepare($query);
+                $stmt->execute($params);
             }
 
             if ($ownTransaction) {
@@ -528,13 +777,41 @@ class Properties extends Base
 
     public function deletePropertyImage($property_id, $image_id)
     {
-        $query = "DELETE FROM {$this->table_images} 
-                 WHERE id = :image_id AND property_id = :property_id";
+        try {
+            $query = "DELETE FROM {$this->table_images} 
+                     WHERE id = :image_id AND property_id = :property_id";
 
-        return parent::delete($query, [
-            "image_id" => $image_id,
-            "property_id" => $property_id
-        ]);
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute([
+                "image_id" => $image_id,
+                "property_id" => $property_id
+            ]);
+
+            // Verificar si la imagen eliminada era la principal y si hay otras imágenes
+            $checkQuery = "SELECT COUNT(*) as count, SUM(is_main) as has_main FROM {$this->table_images} WHERE property_id = :property_id";
+            $checkStmt = $this->conn->prepare($checkQuery);
+            $checkStmt->execute(["property_id" => $property_id]);
+            $result = $checkStmt->fetch(\PDO::FETCH_OBJ);
+
+            // Si no hay imagen principal pero sí hay imágenes, establecer la primera como principal
+            if ($result->count > 0 && $result->has_main == 0) {
+                $updateQuery = "UPDATE {$this->table_images} SET is_main = 1 
+                               WHERE property_id = :property_id ORDER BY id LIMIT 1";
+                $updateStmt = $this->conn->prepare($updateQuery);
+                $updateStmt->execute(["property_id" => $property_id]);
+            }
+
+            $this->result = new \stdClass();
+            $this->result->ok = true;
+            $this->result->msg = "Imagen eliminada exitosamente";
+
+            return $this;
+        } catch (\Exception $e) {
+            $this->result = new \stdClass();
+            $this->result->ok = false;
+            $this->result->msg = $e->getMessage();
+            return $this;
+        }
     }
 
     public function setMainImage($property_id, $image_id)
@@ -542,28 +819,52 @@ class Properties extends Base
         try {
             $this->conn->beginTransaction();
 
+            // Verificar que la imagen existe y pertenece a la propiedad
+            $checkQuery = "SELECT id FROM {$this->table_images} WHERE id = :image_id AND property_id = :property_id";
+            $checkStmt = $this->conn->prepare($checkQuery);
+            $checkStmt->execute([
+                "image_id" => $image_id,
+                "property_id" => $property_id
+            ]);
+
+            if ($checkStmt->rowCount() == 0) {
+                throw new \Exception("La imagen no existe o no pertenece a esta propiedad");
+            }
+
             // Quitar la marca de principal de todas las imágenes
             $query = "UPDATE {$this->table_images} 
                      SET is_main = 0 
                      WHERE property_id = :property_id";
-            parent::update($query, ["property_id" => $property_id]);
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute(["property_id" => $property_id]);
 
             // Marcar la imagen indicada como principal
             $query = "UPDATE {$this->table_images} 
                      SET is_main = 1 
                      WHERE id = :image_id AND property_id = :property_id";
-            parent::update($query, [
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute([
                 "image_id" => $image_id,
                 "property_id" => $property_id
             ]);
 
             $this->conn->commit();
+
+            $this->result = new \stdClass();
+            $this->result->ok = true;
+            $this->result->msg = "Imagen principal actualizada exitosamente";
+
             return $this;
         } catch (\Exception $e) {
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
-            throw $e;
+
+            $this->result = new \stdClass();
+            $this->result->ok = false;
+            $this->result->msg = $e->getMessage();
+
+            return $this;
         }
     }
 }

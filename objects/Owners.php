@@ -54,13 +54,31 @@ class Owners extends Base
             "document_type" => $data['document_type'],
             "document_number" => $data['document_number'],
             "name" => $data['name'],
-            "email" => $data['email'] ?? null,
-            "phone" => $data['phone'] ?? null,
-            "address" => $data['address'] ?? null,
-            "city" => $data['city'] ?? null,
-            "province" => $data['province'] ?? null,
-            "is_company" => $data['is_company'] ?? 0
+            "email" => isset($data['email']) && !empty($data['email']) ? $data['email'] : null,
+            "phone" => isset($data['phone']) && !empty($data['phone']) ? $data['phone'] : null,
+            "address" => isset($data['address']) && !empty($data['address']) ? $data['address'] : null,
+            "city" => isset($data['city']) && !empty($data['city']) ? $data['city'] : null,
+            "province" => isset($data['province']) && !empty($data['province']) ? $data['province'] : null,
+            "is_company" => isset($data['is_company']) && $data['is_company'] ? 1 : 0
         ]);
+        return $this;
+    }
+
+    public function searchOwners($searchTerm)
+    {
+        $search = "%{$searchTerm}%";
+
+        $query = "SELECT * FROM {$this->table_name} 
+              WHERE name LIKE :search 
+              OR document_number LIKE :search 
+              OR email LIKE :search 
+              OR phone LIKE :search 
+              OR address LIKE :search 
+              OR city LIKE :search 
+              OR province LIKE :search
+              ORDER BY name";
+
+        parent::getAll($query, ["search" => $search]);
         return $this;
     }
 
@@ -78,20 +96,18 @@ class Owners extends Base
                  is_company = :is_company
                  WHERE id = :id";
 
-        parent::update($query, array_merge(
-            ["id" => $id],
-            [
-                "document_type" => $data['document_type'],
-                "document_number" => $data['document_number'],
-                "name" => $data['name'],
-                "email" => $data['email'] ?? null,
-                "phone" => $data['phone'] ?? null,
-                "address" => $data['address'] ?? null,
-                "city" => $data['city'] ?? null,
-                "province" => $data['province'] ?? null,
-                "is_company" => $data['is_company'] ?? 0
-            ]
-        ));
+        parent::update($query, [
+            "id" => $id,
+            "document_type" => $data['document_type'],
+            "document_number" => $data['document_number'],
+            "name" => $data['name'],
+            "email" => isset($data['email']) && !empty($data['email']) ? $data['email'] : null,
+            "phone" => isset($data['phone']) && !empty($data['phone']) ? $data['phone'] : null,
+            "address" => isset($data['address']) && !empty($data['address']) ? $data['address'] : null,
+            "city" => isset($data['city']) && !empty($data['city']) ? $data['city'] : null,
+            "province" => isset($data['province']) && !empty($data['province']) ? $data['province'] : null,
+            "is_company" => isset($data['is_company']) && $data['is_company'] ? 1 : 0
+        ]);
         return $this;
     }
 

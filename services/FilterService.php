@@ -16,7 +16,6 @@ class FilterService
             'type' => 'p.type',
             'status' => 'p.status'
         ];
-
         foreach ($textFilters as $param => $field) {
             if (!empty($params[$param])) {
                 $conditions[] = "$field = :$param";
@@ -24,14 +23,20 @@ class FilterService
             }
         }
 
-        // Filtros de rango de precios
+        // Filtros de rango de precios y área
         $rangeFilters = [
             'min_price_ars' => ['field' => 'p.price_ars', 'operator' => '>='],
             'max_price_ars' => ['field' => 'p.price_ars', 'operator' => '<='],
             'min_price_usd' => ['field' => 'p.price_usd', 'operator' => '>='],
             'max_price_usd' => ['field' => 'p.price_usd', 'operator' => '<='],
-            'min_area' => ['field' => 'p.area_size', 'operator' => '>='],
-            'max_area' => ['field' => 'p.area_size', 'operator' => '<=']
+            'min_covered_area' => ['field' => 'p.covered_area', 'operator' => '>='],
+            'max_covered_area' => ['field' => 'p.covered_area', 'operator' => '<='],
+            'min_total_area' => ['field' => 'p.total_area', 'operator' => '>='],
+            'max_total_area' => ['field' => 'p.total_area', 'operator' => '<='],
+            'min_latitude' => ['field' => 'p.latitude', 'operator' => '>='],
+            'max_latitude' => ['field' => 'p.latitude', 'operator' => '<='],
+            'min_longitude' => ['field' => 'p.longitude', 'operator' => '>='],
+            'max_longitude' => ['field' => 'p.longitude', 'operator' => '<=']
         ];
 
         foreach ($rangeFilters as $param => $config) {
@@ -44,7 +49,11 @@ class FilterService
         // Filtros booleanos
         $booleanFilters = [
             'featured' => 'p.featured',
-            'garage' => 'p.garage'
+            'garage' => 'p.garage',
+            'has_electricity' => 'p.has_electricity',
+            'has_natural_gas' => 'p.has_natural_gas',
+            'has_sewage' => 'p.has_sewage',
+            'has_paved_street' => 'p.has_paved_street'
         ];
 
         foreach ($booleanFilters as $param => $field) {
@@ -88,6 +97,32 @@ class FilterService
             $values['search'] = "%{$params['search']}%";
         }
 
+        // Filtro por radio (basado en latitud y longitud)
+        if (!empty($params['latitude']) && !empty($params['longitude']) && !empty($params['radius'])) {
+            // Convertir radio de km a grados (aproximadamente)
+            $radius_lat = floatval($params['radius']) / 111.32; // 1 grado ≈ 111.32 km
+            $radius_lon = floatval($params['radius']) / (111.32 * cos(deg2rad(floatval($params['latitude'])))); // Ajustado por latitud
+
+            // Calcular bounding box (cuadro delimitador) para optimizar la consulta
+            $min_lat = floatval($params['latitude']) - $radius_lat;
+            $max_lat = floatval($params['latitude']) + $radius_lat;
+            $min_lon = floatval($params['longitude']) - $radius_lon;
+            $max_lon = floatval($params['longitude']) + $radius_lon;
+
+            // Filtrar primero por bounding box (más rápido que la fórmula haversine)
+            $conditions[] = "p.latitude BETWEEN :min_lat AND :max_lat AND p.longitude BETWEEN :min_lon AND :max_lon";
+            $values['min_lat'] = $min_lat;
+            $values['max_lat'] = $max_lat;
+            $values['min_lon'] = $min_lon;
+            $values['max_lon'] = $max_lon;
+
+            // Luego aplicar la fórmula haversine para una distancia más precisa
+            $conditions[] = "(6371 * acos(cos(radians(:latitude)) * cos(radians(p.latitude)) * cos(radians(p.longitude) - radians(:longitude)) + sin(radians(:latitude)) * sin(radians(p.latitude)))) <= :radius";
+            $values['latitude'] = floatval($params['latitude']);
+            $values['longitude'] = floatval($params['longitude']);
+            $values['radius'] = floatval($params['radius']);
+        }
+
         return [
             'conditions' => $conditions,
             'values' => $values
@@ -99,7 +134,8 @@ class FilterService
         $allowedFields = [
             'price_ars',
             'price_usd',
-            'area_size',
+            'covered_area',
+            'total_area',
             'created_at',
             'updated_at'
         ];
@@ -110,6 +146,11 @@ class FilterService
             $direction = !empty($params['sort_dir']) &&
                 strtoupper($params['sort_dir']) === 'DESC' ? 'DESC' : 'ASC';
             $orderBy[] = "p.{$params['sort_by']} $direction";
+        }
+
+        // Orden por distancia si se proporciona latitud y longitud
+        if (!empty($params['latitude']) && !empty($params['longitude'])) {
+            $orderBy[] = "(6371 * acos(cos(radians(" . floatval($params['latitude']) . ")) * cos(radians(p.latitude)) * cos(radians(p.longitude) - radians(" . floatval($params['longitude']) . ")) + sin(radians(" . floatval($params['latitude']) . ")) * sin(radians(p.latitude)))) ASC";
         }
 
         // Orden por defecto
