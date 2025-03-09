@@ -5,6 +5,7 @@ namespace controllers;
 use \Psr\Http\Message\ResponseInterface as Response;
 use \Psr\Http\Message\ServerRequestInterface as Request;
 use \objects\Properties;
+use \objects\PropertyTypes;
 use \utils\PropertyValidator;
 use \services\ImageService;
 use \services\FilterService;
@@ -52,6 +53,7 @@ class PropertyController
             ->withHeader("Content-Type", "application/json")
             ->withStatus($resp->ok ? 200 : 409);
     }
+    
     public function createProperty(Request $request, Response $response)
     {
         $params = $request->getParsedBody();
@@ -69,6 +71,7 @@ class PropertyController
             'title' => $params['title'] ?? null,
             'description' => $params['description'] ?? null,
             'type' => $params['type'] ?? null,
+            'type_id' => isset($params['type_id']) ? intval($params['type_id']) : null,
             'status' => $params['status'] ?? null,
             'price_ars' => isset($params['price_ars']) && $params['price_ars'] !== '' ? floatval($params['price_ars']) : null,
             'price_usd' => isset($params['price_usd']) && $params['price_usd'] !== '' ? floatval($params['price_usd']) : null,
@@ -92,6 +95,20 @@ class PropertyController
             'user_id' => $userId
         ];
 
+        // Si se proporciona type pero no type_id, intentar obtener el type_id correspondiente
+        if (empty($data['type_id']) && !empty($data['type'])) {
+            $propertyTypes = new PropertyTypes($this->container->get("db"));
+            $result = $propertyTypes->getPropertyTypes()->getResult();
+            
+            if ($result->ok && !empty($result->data)) {
+                foreach ($result->data as $type) {
+                    if (strtolower($type->name) === strtolower($data['type'])) {
+                        $data['type_id'] = $type->id;
+                        break;
+                    }
+                }
+            }
+        }
 
         // Decodificar los amenities enviados como JSON
         if (isset($params['amenities'])) {
@@ -172,6 +189,7 @@ class PropertyController
             'title' => $fields['title'] ?? null,
             'description' => $fields['description'] ?? null,
             'type' => $fields['type'] ?? null,
+            'type_id' => isset($fields['type_id']) ? intval($fields['type_id']) : null,
             'status' => $fields['status'] ?? null,
             'price_ars' => isset($fields['price_ars']) && $fields['price_ars'] !== '' ? floatval($fields['price_ars']) : null,
             'price_usd' => isset($fields['price_usd']) && $fields['price_usd'] !== '' ? floatval($fields['price_usd']) : null,
@@ -192,6 +210,21 @@ class PropertyController
             'latitude' => isset($fields['latitude']) && $fields['latitude'] !== '' ? floatval($fields['latitude']) : null,
             'longitude' => isset($fields['longitude']) && $fields['longitude'] !== '' ? floatval($fields['longitude']) : null
         ];
+
+        // Si se proporciona type pero no type_id, intentar obtener el type_id correspondiente
+        if (empty($data['type_id']) && !empty($data['type'])) {
+            $propertyTypes = new PropertyTypes($this->container->get("db"));
+            $result = $propertyTypes->getPropertyTypes()->getResult();
+            
+            if ($result->ok && !empty($result->data)) {
+                foreach ($result->data as $type) {
+                    if (strtolower($type->name) === strtolower($data['type'])) {
+                        $data['type_id'] = $type->id;
+                        break;
+                    }
+                }
+            }
+        }
 
         // Si amenities viene como JSON, decodificarlo
         if (isset($fields['amenities'])) {
@@ -269,6 +302,7 @@ class PropertyController
                 ->withStatus(500);
         }
     }
+    
     public function getAvailableProperties(Request $request, Response $response)
     {
         $properties = new Properties($this->container->get("db"));
@@ -280,6 +314,7 @@ class PropertyController
             ->withHeader("Content-Type", "application/json")
             ->withStatus($resp->ok ? 200 : 409);
     }
+    
     public function changePropertyStatus(Request $request, Response $response, array $args)
     {
         $data = $request->getParsedBody();
@@ -524,6 +559,27 @@ class PropertyController
         $properties = new Properties($this->container->get("db"));
         $resp = $properties->deletePropertyImage($args["id"], $args["image_id"])->getResult();
 
+        $response->getBody()->write(json_encode($resp));
+        return $response
+            ->withHeader("Content-Type", "application/json")
+            ->withStatus($resp->ok ? 200 : 409);
+    }
+    
+    // Métodos para tipos de propiedades
+    public function getPropertyTypes(Request $request, Response $response)
+    {
+        $propertyTypes = new PropertyTypes($this->container->get("db"));
+        $resp = $propertyTypes->getPropertyTypes()->getResult();
+        $response->getBody()->write(json_encode($resp));
+        return $response
+            ->withHeader("Content-Type", "application/json")
+            ->withStatus($resp->ok ? 200 : 409);
+    }
+
+    public function getActivePropertyTypes(Request $request, Response $response)
+    {
+        $propertyTypes = new PropertyTypes($this->container->get("db"));
+        $resp = $propertyTypes->getActivePropertyTypes()->getResult();
         $response->getBody()->write(json_encode($resp));
         return $response
             ->withHeader("Content-Type", "application/json")

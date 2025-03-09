@@ -23,6 +23,26 @@ class FilterService
             }
         }
 
+        // Filtro por tipo de propiedad (usando el ID)
+        if (!empty($params['type_id'])) {
+            $conditions[] = "p.type_id = :type_id";
+            $values['type_id'] = intval($params['type_id']);
+        }
+
+        // Filtro por múltiples tipos de propiedad
+        if (!empty($params['type_ids']) && is_array($params['type_ids'])) {
+            $typeIds = array_filter($params['type_ids'], 'is_numeric');
+            if (!empty($typeIds)) {
+                $placeholders = [];
+                foreach ($typeIds as $index => $typeId) {
+                    $paramName = "type_id_" . $index;
+                    $placeholders[] = ":$paramName";
+                    $values[$paramName] = intval($typeId);
+                }
+                $conditions[] = "p.type_id IN (" . implode(', ', $placeholders) . ")";
+            }
+        }
+
         // Filtros de rango de precios y área
         $rangeFilters = [
             'min_price_ars' => ['field' => 'p.price_ars', 'operator' => '>='],

@@ -22,8 +22,10 @@ class Properties extends Base
         $filters = $filterService->buildPropertyFilters($params);
         $orderBy = $filterService->buildOrderBy($params);
 
-        $query = "SELECT p.*, pa.has_pool, pa.has_heating, pa.has_ac, pa.has_garden, pa.has_laundry, pa.has_parking, pa.has_central_heating, pa.has_lawn, pa.has_fireplace, pa.has_central_ac, pa.has_high_ceiling
+        // Modificar la consulta para incluir la tabla property_types
+        $query = "SELECT p.*, pt.name as property_type_name, pa.has_pool, pa.has_heating, pa.has_ac, pa.has_garden, pa.has_laundry, pa.has_parking, pa.has_central_heating, pa.has_lawn, pa.has_fireplace, pa.has_central_ac, pa.has_high_ceiling
                   FROM {$this->table_name} p
+                  LEFT JOIN property_types pt ON p.type_id = pt.id
                   LEFT JOIN {$this->table_amenities} pa ON p.id = pa.property_id";
 
         if (!empty($filters['conditions'])) {
@@ -42,6 +44,16 @@ class Properties extends Base
         }
 
         parent::getAll($query, $filters['values']);
+
+        // Opcional: Modificar el resultado para incluir el tipo de propiedad en un campo más accesible
+        if (isset($this->result) && isset($this->result->data) && is_array($this->result->data)) {
+            foreach ($this->result->data as $property) {
+                if (isset($property->property_type_name)) {
+                    $property->type_name = $property->property_type_name;
+                }
+            }
+        }
+
         return $this;
     }
 
@@ -72,8 +84,8 @@ class Properties extends Base
 
     public function getProperty($id)
     {
-        // Se obtiene la propiedad junto con los campos de amenities y datos del propietario
-        $query = "SELECT p.*, 
+        // Modificar la consulta para incluir la tabla property_types
+        $query = "SELECT p.*, pt.name as property_type_name, 
                   pa.has_pool, pa.has_heating, pa.has_ac, pa.has_garden, pa.has_laundry, 
                   pa.has_parking, pa.has_central_heating, pa.has_lawn, pa.has_fireplace, 
                   pa.has_central_ac, pa.has_high_ceiling,
@@ -81,6 +93,7 @@ class Properties extends Base
                   o.email as owner_email, o.phone as owner_phone, o.address as owner_address,
                   o.city as owner_city, o.province as owner_province, o.is_company
                   FROM {$this->table_name} p
+                  LEFT JOIN property_types pt ON p.type_id = pt.id
                   LEFT JOIN {$this->table_amenities} pa ON p.id = pa.property_id
                   LEFT JOIN owners o ON p.owner_id = o.id
                   WHERE p.id = :id";
@@ -89,6 +102,12 @@ class Properties extends Base
 
         $result = parent::getResult();
         if ($result->ok && $result->data) {
+            // Añadir el tipo de propiedad en un campo más accesible
+            if (isset($result->data->property_type_name)) {
+                $result->data->type_name = $result->data->property_type_name;
+            }
+
+            // Resto del código existente...
             // Construir el objeto amenities
             $amenities = [
                 "has_pool" => $result->data->has_pool,
@@ -186,36 +205,38 @@ class Properties extends Base
             }
 
             $query = "INSERT INTO {$this->table_name} SET
-                title = :title,
-                description = :description,
-                type = :type,
-                status = :status,
-                price_ars = :price_ars,
-                price_usd = :price_usd,
-                covered_area = :covered_area,
-                total_area = :total_area,
-                bedrooms = :bedrooms,
-                bathrooms = :bathrooms,
-                garage = :garage,
-                has_electricity = :has_electricity,
-                has_natural_gas = :has_natural_gas,
-                has_sewage = :has_sewage,
-                has_paved_street = :has_paved_street,
-                address = :address,
-                city = :city,
-                province = :province,
-                featured = :featured,
-                owner_id = :owner_id,
-                latitude = :latitude,
-                longitude = :longitude,
-                is_available = :is_available,
-                user_id = :user_id";
+            title = :title,
+            description = :description,
+            type = :type,
+            type_id = :type_id,
+            status = :status,
+            price_ars = :price_ars,
+            price_usd = :price_usd,
+            covered_area = :covered_area,
+            total_area = :total_area,
+            bedrooms = :bedrooms,
+            bathrooms = :bathrooms,
+            garage = :garage,
+            has_electricity = :has_electricity,
+            has_natural_gas = :has_natural_gas,
+            has_sewage = :has_sewage,
+            has_paved_street = :has_paved_street,
+            address = :address,
+            city = :city,
+            province = :province,
+            featured = :featured,
+            owner_id = :owner_id,
+            latitude = :latitude,
+            longitude = :longitude,
+            is_available = :is_available,
+            user_id = :user_id";
 
             $stmt = $this->conn->prepare($query);
             $result = $stmt->execute([
                 "title" => $data['title'],
                 "description" => $data['description'],
-                "type" => $data['type'],
+                "type" => $data['type'] ?? null, // Mantener para compatibilidad
+                "type_id" => isset($data['type_id']) ? intval($data['type_id']) : null,
                 "status" => $data['status'],
                 "price_ars" => $data['price_ars'] ?? null,
                 "price_usd" => $data['price_usd'] ?? null,
@@ -238,6 +259,7 @@ class Properties extends Base
                 "is_available" => isset($data['is_available']) ? $data['is_available'] : 1,
                 "user_id" => isset($data['user_id']) ? intval($data['user_id']) : null
             ]);
+
             if ($result) {
                 $property_id = $this->conn->lastInsertId();
 
@@ -327,25 +349,26 @@ class Properties extends Base
             }
 
             $query = "UPDATE {$this->table_name} SET
-                title = :title,
-                description = :description,
-                type = :type,
-                status = :status,
-                price_ars = :price_ars,
-                price_usd = :price_usd,
-                covered_area = :covered_area,
-                total_area = :total_area,
-                bedrooms = :bedrooms,
-                bathrooms = :bathrooms,
-                garage = :garage,
-                has_electricity = :has_electricity,
-                has_natural_gas = :has_natural_gas,
-                has_sewage = :has_sewage,
-                has_paved_street = :has_paved_street,
-                address = :address,
-                city = :city,
-                province = :province,
-                featured = :featured";
+            title = :title,
+            description = :description,
+            type = :type,
+            type_id = :type_id,
+            status = :status,
+            price_ars = :price_ars,
+            price_usd = :price_usd,
+            covered_area = :covered_area,
+            total_area = :total_area,
+            bedrooms = :bedrooms,
+            bathrooms = :bathrooms,
+            garage = :garage,
+            has_electricity = :has_electricity,
+            has_natural_gas = :has_natural_gas,
+            has_sewage = :has_sewage,
+            has_paved_street = :has_paved_street,
+            address = :address,
+            city = :city,
+            province = :province,
+            featured = :featured";
 
             // Agregar campo is_available si se proporciona
             if (isset($data['is_available'])) {
@@ -372,7 +395,8 @@ class Properties extends Base
                 "id" => $id,
                 "title" => $data['title'],
                 "description" => $data['description'],
-                "type" => $data['type'],
+                "type" => $data['type'] ?? null, // Mantener para compatibilidad
+                "type_id" => isset($data['type_id']) ? intval($data['type_id']) : null,
                 "status" => $data['status'],
                 "price_ars" => $data['price_ars'] ?? null,
                 "price_usd" => $data['price_usd'] ?? null,
