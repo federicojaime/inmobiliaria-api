@@ -61,6 +61,31 @@ class Owners extends Base
             "province" => isset($data['province']) && !empty($data['province']) ? $data['province'] : null,
             "is_company" => isset($data['is_company']) && $data['is_company'] ? 1 : 0
         ]);
+
+        // Asegurarse de que el resultado incluya el campo 'id'
+        if (isset($this->result) && isset($this->result->data) && isset($this->result->data->newId)) {
+            // Si ya existe newId en la respuesta, copiar a id
+            $this->result->data->id = $this->result->data->newId;
+        } else if (method_exists($this, 'getLastInsertId')) {
+            // Si no hay newId pero existe el método getLastInsertId
+            try {
+                $lastId = $this->getLastInsertId();
+
+                if (!isset($this->result)) {
+                    $this->result = (object) ['ok' => true, 'msg' => '', 'data' => (object) []];
+                } else if (!isset($this->result->data)) {
+                    $this->result->data = (object) [];
+                }
+
+                $this->result->data->id = $lastId;
+                // También mantener newId para compatibilidad
+                $this->result->data->newId = $lastId;
+            } catch (Exception $e) {
+                // Si hay un error al obtener el último ID, registrarlo
+                error_log("Error al obtener el último ID insertado: " . $e->getMessage());
+            }
+        }
+
         return $this;
     }
 
