@@ -218,3 +218,53 @@ $app->delete("/property/{id:[0-9]+}/image/{image_id:[0-9]+}", function (Request 
     $controller = new PropertyController($this);
     return $controller->deletePropertyImage($request, $response, $args);
 });
+
+use controllers\PropertyTypeController;
+
+// Obtener todos los tipos de propiedades
+$app->get("/property-types", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyTypeController($this);
+    return $controller->getPropertyTypes($request, $response);
+});
+
+// Obtener todos los tipos de propiedades activos
+$app->get("/property-types/active", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyTypeController($this);
+    return $controller->getActivePropertyTypes($request, $response);
+});
+
+// Obtener un tipo de propiedad por ID
+$app->get("/property-type/{id:[0-9]+}", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyTypeController($this);
+    return $controller->getPropertyType($request, $response, $args);
+});
+
+// Crear un nuevo tipo de propiedad
+$app->post("/property-type", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyTypeController($this);
+    return $controller->createPropertyType($request, $response);
+});
+
+// Actualizar un tipo de propiedad
+$app->put("/property-type/{id:[0-9]+}", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyTypeController($this);
+    return $controller->updatePropertyType($request, $response, $args);
+});
+
+// Eliminar un tipo de propiedad
+$app->delete("/property-type/{id:[0-9]+}", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyTypeController($this);
+    return $controller->deletePropertyType($request, $response, $args);
+});
+
+// Activar un tipo de propiedad
+$app->patch("/property-type/{id:[0-9]+}/activate", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyTypeController($this);
+    return $controller->activatePropertyType($request, $response, $args);
+});
+
+// Desactivar un tipo de propiedad
+$app->patch("/property-type/{id:[0-9]+}/deactivate", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyTypeController($this);
+    return $controller->deactivatePropertyType($request, $response, $args);
+});
