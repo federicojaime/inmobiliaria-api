@@ -5,6 +5,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use controllers\UserController;
 use controllers\OwnerController;
 use controllers\PropertyController;
+use controllers\PropertyTypeController;
 
 // Ruta principal
 $app->get("/", function (Request $request, Response $response, array $args) {
@@ -93,6 +94,12 @@ $app->delete("/owner/{id:[0-9]+}", function (Request $request, Response $respons
     return $controller->deleteOwner($request, $response, $args);
 });
 
+// Búsqueda de propietarios por texto
+$app->get("/owners/search", function (Request $request, Response $response) {
+    $controller = new OwnerController($this);
+    return $controller->searchOwners($request, $response);
+});
+
 // ======== RUTAS DE PROPIEDADES ========
 // Obtener todas las propiedades
 $app->get("/properties", function (Request $request, Response $response, array $args) {
@@ -135,8 +142,8 @@ $app->get("/properties/featured", function (Request $request, Response $response
     $controller = new PropertyController($this);
     return $controller->getFeaturedProperties($request, $response);
 });
-// Obtener propiedades por estado (alquiladas, en venta, etc)
 
+// Obtener propiedades por estado (alquiladas, en venta, etc)
 $app->get("/properties/status/{status}", function (Request $request, Response $response, array $args) {
     $controller = new PropertyController($this);
     $params = $request->getQueryParams(); // Obtener otros parámetros de consulta
@@ -144,12 +151,7 @@ $app->get("/properties/status/{status}", function (Request $request, Response $r
     return $controller->getPropertiesByStatus($request, $response, $args);
 });
 
-// Búsqueda de propietarios por texto
-$app->get("/owners/search", function (Request $request, Response $response) {
-    $controller = new OwnerController($this);
-    return $controller->searchOwners($request, $response);
-});
-
+// Obtener propiedades disponibles
 $app->get("/properties/available", function (Request $request, Response $response) {
     $controller = new PropertyController($this);
     return $controller->getAvailableProperties($request, $response);
@@ -219,8 +221,7 @@ $app->delete("/property/{id:[0-9]+}/image/{image_id:[0-9]+}", function (Request 
     return $controller->deletePropertyImage($request, $response, $args);
 });
 
-use controllers\PropertyTypeController;
-
+// ======== RUTAS DE TIPOS DE PROPIEDADES ========
 // Obtener todos los tipos de propiedades
 $app->get("/property-types", function (Request $request, Response $response, array $args) {
     $controller = new PropertyTypeController($this);
@@ -267,4 +268,23 @@ $app->patch("/property-type/{id:[0-9]+}/activate", function (Request $request, R
 $app->patch("/property-type/{id:[0-9]+}/deactivate", function (Request $request, Response $response, array $args) {
     $controller = new PropertyTypeController($this);
     return $controller->deactivatePropertyType($request, $response, $args);
+});
+
+// ======== RUTAS PÚBLICAS PARA PROPIEDADES ========
+// Obtener todas las propiedades disponibles (para el público)
+$app->get("/properties/public", function (Request $request, Response $response) {
+    $controller = new PropertyController($this);
+    return $controller->getPublicProperties($request, $response);
+});
+
+// Obtener una propiedad específica (para el público)
+$app->get("/property/public/{id:[0-9]+}", function (Request $request, Response $response, array $args) {
+    $controller = new PropertyController($this);
+    return $controller->getPublicProperty($request, $response, $args);
+});
+
+// Obtener propiedades por filtros públicos
+$app->get("/properties/public/search", function (Request $request, Response $response) {
+    $controller = new PropertyController($this);
+    return $controller->searchProperties($request, $response);
 });

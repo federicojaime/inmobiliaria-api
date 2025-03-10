@@ -53,7 +53,7 @@ class PropertyController
             ->withHeader("Content-Type", "application/json")
             ->withStatus($resp->ok ? 200 : 409);
     }
-    
+
     public function createProperty(Request $request, Response $response)
     {
         $params = $request->getParsedBody();
@@ -99,7 +99,7 @@ class PropertyController
         if (empty($data['type_id']) && !empty($data['type'])) {
             $propertyTypes = new PropertyTypes($this->container->get("db"));
             $result = $propertyTypes->getPropertyTypes()->getResult();
-            
+
             if ($result->ok && !empty($result->data)) {
                 foreach ($result->data as $type) {
                     if (strtolower($type->name) === strtolower($data['type'])) {
@@ -215,7 +215,7 @@ class PropertyController
         if (empty($data['type_id']) && !empty($data['type'])) {
             $propertyTypes = new PropertyTypes($this->container->get("db"));
             $result = $propertyTypes->getPropertyTypes()->getResult();
-            
+
             if ($result->ok && !empty($result->data)) {
                 foreach ($result->data as $type) {
                     if (strtolower($type->name) === strtolower($data['type'])) {
@@ -302,7 +302,7 @@ class PropertyController
                 ->withStatus(500);
         }
     }
-    
+
     public function getAvailableProperties(Request $request, Response $response)
     {
         $properties = new Properties($this->container->get("db"));
@@ -314,7 +314,7 @@ class PropertyController
             ->withHeader("Content-Type", "application/json")
             ->withStatus($resp->ok ? 200 : 409);
     }
-    
+
     public function changePropertyStatus(Request $request, Response $response, array $args)
     {
         $data = $request->getParsedBody();
@@ -564,7 +564,7 @@ class PropertyController
             ->withHeader("Content-Type", "application/json")
             ->withStatus($resp->ok ? 200 : 409);
     }
-    
+
     // Métodos para tipos de propiedades
     public function getPropertyTypes(Request $request, Response $response)
     {
@@ -580,6 +580,67 @@ class PropertyController
     {
         $propertyTypes = new PropertyTypes($this->container->get("db"));
         $resp = $propertyTypes->getActivePropertyTypes()->getResult();
+        $response->getBody()->write(json_encode($resp));
+        return $response
+            ->withHeader("Content-Type", "application/json")
+            ->withStatus($resp->ok ? 200 : 409);
+    }
+    public function getPublicProperties(Request $request, Response $response)
+    {
+        $properties = new Properties($this->container->get("db"));
+        $params = $request->getQueryParams();
+
+        // Aseguramos que solo propiedades disponibles sean mostradas al público
+        $params['is_available'] = 1;
+
+        $resp = $properties->getProperties($params)->getResult();
+
+        // Procesa imágenes y añade la URL de la imagen principal para cada propiedad
+        if ($resp->ok && !empty($resp->data)) {
+            foreach ($resp->data as $property) {
+                // Obtener imágenes de la propiedad
+                $query = "SELECT * FROM property_images WHERE property_id = :property_id";
+                $stmt = $this->container->get("db")->prepare($query);
+                $stmt->execute(["property_id" => $property->id]);
+                $images = $stmt->fetchAll(\PDO::FETCH_OBJ);
+
+                // Buscar la imagen principal
+                $mainImage = null;
+                foreach ($images as $image) {
+                    if ($image->is_main) {
+                        $mainImage = $image->image_url;
+                        break;
+                    }
+                }
+
+                // Si no hay imagen principal, usa la primera disponible
+                if (!$mainImage && !empty($images)) {
+                    $mainImage = $images[0]->image_url;
+                }
+
+                $property->main_image = $mainImage;
+                $property->images = $images;
+            }
+        }
+
+        $response->getBody()->write(json_encode($resp));
+        return $response
+            ->withHeader("Content-Type", "application/json")
+            ->withStatus($resp->ok ? 200 : 409);
+    }
+
+    public function getPublicProperty(Request $request, Response $response, array $args)
+    {
+        $properties = new Properties($this->container->get("db"));
+        $resp = $properties->getProperty($args["id"])->getResult();
+
+        // Verificar que la propiedad esté disponible para el público
+        if ($resp->ok && $resp->data && isset($resp->data->is_available) && !$resp->data->is_available) {
+            $resp->ok = false;
+            $resp->msg = "La propiedad solicitada no está disponible";
+            $resp->data = null;
+        }
+
         $response->getBody()->write(json_encode($resp));
         return $response
             ->withHeader("Content-Type", "application/json")
