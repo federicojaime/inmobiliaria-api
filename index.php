@@ -21,18 +21,18 @@ $dotenv->load();
 
 // Configuración de la base de datos
 $container->set("db", function () {
-   $con = array(
+   /* $con = array(
         "host" => $_ENV["DB_HOST"] ?? "localhost",
         "dbname" => $_ENV["DB_NAME"] ?? "u565673608_karttem_local",
         "user" => $_ENV["DB_USER"] ?? "root",
         "pass" => $_ENV["DB_PASS"] ?? ""
-    );
-    /*  $con = array(
+    );*/
+     $con = array(
         "host" => $_ENV["DB_HOST"] ?? "localhost",
         "dbname" => $_ENV["DB_NAME"] ?? "u565673608_karttem",
         "user" => $_ENV["DB_USER"] ?? "u565673608_karttem",
         "pass" => $_ENV["DB_PASS"] ?? "YDL*emSH;x9"
-    ); */
+    ); 
    
     
 
