@@ -471,6 +471,34 @@ class PropertyController
         $properties = new Properties($this->container->get("db"));
         $resp = $properties->searchProperties($queryParams)->getResult();
 
+        // Procesar imágenes y añadir la URL de la imagen principal para cada propiedad
+        if ($resp->ok && !empty($resp->data)) {
+            foreach ($resp->data as $property) {
+                // Obtener imágenes de la propiedad
+                $query = "SELECT * FROM property_images WHERE property_id = :property_id";
+                $stmt = $this->container->get("db")->prepare($query);
+                $stmt->execute(["property_id" => $property->id]);
+                $images = $stmt->fetchAll(\PDO::FETCH_OBJ);
+
+                // Buscar la imagen principal
+                $mainImage = null;
+                foreach ($images as $image) {
+                    if ($image->is_main) {
+                        $mainImage = $image->image_url;
+                        break;
+                    }
+                }
+
+                // Si no hay imagen principal, usa la primera disponible
+                if (!$mainImage && !empty($images)) {
+                    $mainImage = $images[0]->image_url;
+                }
+
+                $property->main_image = $mainImage;
+                $property->images = $images;
+            }
+        }
+
         $response->getBody()->write(json_encode($resp));
         return $response
             ->withHeader("Content-Type", "application/json")

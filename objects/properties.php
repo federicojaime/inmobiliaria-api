@@ -23,7 +23,7 @@ class Properties extends Base
         $orderBy = $filterService->buildOrderBy($params);
 
         // Modificar la consulta para incluir la tabla property_types
-        $query = "SELECT p.*, pt.name as property_type_name, pa.has_pool, pa.has_heating, pa.has_ac, pa.has_garden, pa.has_laundry, pa.has_parking, pa.has_central_heating, pa.has_lawn, pa.has_fireplace, pa.main_image, pa.has_central_ac, pa.has_high_ceiling
+        $query = "SELECT p.*, pt.name as property_type_name, pa.has_pool, pa.has_heating, pa.has_ac, pa.has_garden, pa.has_laundry, pa.has_parking, pa.has_central_heating, pa.has_lawn, pa.has_fireplace, pa.has_central_ac, pa.has_high_ceiling
                   FROM {$this->table_name} p
                   LEFT JOIN property_types pt ON p.type_id = pt.id
                   LEFT JOIN {$this->table_amenities} pa ON p.id = pa.property_id";
@@ -88,7 +88,7 @@ class Properties extends Base
         $query = "SELECT p.*, pt.name as property_type_name, 
                   pa.has_pool, pa.has_heating, pa.has_ac, pa.has_garden, pa.has_laundry, 
                   pa.has_parking, pa.has_central_heating, pa.has_lawn, pa.has_fireplace, 
-                  pa.has_central_ac, pa.has_high_ceiling, pa.main_image,
+                  pa.has_central_ac, pa.has_high_ceiling,
                   o.id as owner_id, o.document_type, o.document_number, o.name as owner_name,
                   o.email as owner_email, o.phone as owner_phone, o.address as owner_address,
                   o.city as owner_city, o.province as owner_province, o.is_company
@@ -531,7 +531,7 @@ class Properties extends Base
 
         return $this;
     }
-
+    
     public function getAvailableProperties($params = [])
     {
         // Asegurarse de que solo se devuelvan propiedades disponibles
